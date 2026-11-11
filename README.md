@@ -29,7 +29,8 @@ If you use Mondocraft, an optional second step adds a harvest file's prompts to 
     listed with the files it sat in;
   - whether a reference image fed the generation.
 
-  A video's first-frame PNG saved beside it counts as the same output.
+  A video's first-frame PNG saved beside it, and Video Combine's `-audio` copy of it (`clip_00001-audio.mp4`
+  beside `clip_00001.mp4`), count as the same output.
 - **Everything else**: prompts that generators and services leave in description, comment or caption fields: PNG
   text chunks, EXIF (ImageDescription, UserComment, XPComment, …), XMP (`dc:description` and others, plus any field
   named for a prompt), IPTC (Caption) and video tags (`description`, `comment`, `prompt`, …). A field counts only when

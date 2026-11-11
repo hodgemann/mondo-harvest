@@ -2,6 +2,14 @@
 
 All notable changes to mondo-harvest are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-11-11
+
+### Changed
+
+- Video Combine's `-audio` copy of a video (`clip_00001-audio.mp4` beside `clip_00001.mp4`) counts as the same
+  output, so its prompt's runs are not counted twice. The run names the plain video. Unfinished crawls saved by
+  earlier versions carry on without reading the copy's video again.
+
 ## [1.1.1] - 2026-11-11
 
 ### Changed
@@ -40,6 +48,7 @@ First public release.
 - `workspaces`: list Mondocraft's workspaces.
 - `--version`.
 
+[1.2.0]: https://github.com/hodgemann/mondo-harvest/releases/tag/v1.2.0
 [1.1.1]: https://github.com/hodgemann/mondo-harvest/releases/tag/v1.1.1
 [1.1.0]: https://github.com/hodgemann/mondo-harvest/releases/tag/v1.1.0
 [1.0.0]: https://github.com/hodgemann/mondo-harvest/releases/tag/v1.0.0

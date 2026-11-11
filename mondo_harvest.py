@@ -35,7 +35,7 @@ import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
-__version__ = "1.1.1"
+__version__ = "1.2.0"
 
 APP = Path(__file__).resolve().parent
 HARVESTS = APP / "harvests"
@@ -695,6 +695,17 @@ def _setup_key(setup: dict) -> str:
     return json.dumps({k: v for k, v in setup.items() if k not in ("runs", "seeds")}, sort_keys=True)
 
 
+def _is_audio_copy(path: Path) -> bool:
+    """Video Combine's copy of a video with its sound added: clip_00001-audio.mp4 beside clip_00001.mp4."""
+    return path.suffix.lower() in VIDEO_EXT and path.stem.endswith("-audio")
+
+
+def _output_stem(path: Path, folder: Path) -> str:
+    """The name shared by every file of one output: a video, its first-frame PNG and its -audio copy."""
+    stem = path.with_suffix("").relative_to(folder)
+    return str(stem.with_name(stem.name[:-len("-audio")]) if _is_audio_copy(path) else stem)
+
+
 def _file_id(path: Path) -> list:
     st = path.stat()
     return [st.st_size, st.st_mtime_ns]
@@ -719,6 +730,10 @@ def _load_partial(checkpoint: Path | None, folder: Path, recurse: bool, files: l
             return None
     except OSError:
         return None
+    for rel in state["seen"]:             # progress saved before 1.2.0 kept an -audio copy under its own name
+        stem = str(Path(rel).with_suffix(""))
+        if _is_audio_copy(Path(rel)) and stem in state.get("done_stems", []):
+            state["done_stems"].append(_output_stem(folder / rel, folder))
     log(f"  Resuming: {len(state['seen'])} files were read in an earlier run.")
     return state
 
@@ -738,7 +753,7 @@ def crawl(folder: Path, recurse: bool = True, log=print, checkpoint: Path | None
     folder = folder.resolve()
     files = sorted((p for p in (folder.rglob("*") if recurse else folder.iterdir())
                     if p.is_file() and p.suffix.lower() in IMAGE_EXT + VIDEO_EXT),
-                   key=lambda p: (str(p.parent), p.suffix.lower() not in VIDEO_EXT, p.name))
+                   key=lambda p: (str(p.parent), p.suffix.lower() not in VIDEO_EXT, _is_audio_copy(p), p.name))
     state = _load_partial(checkpoint, folder, recurse, files, log) or {}
     if state and state.get("keep_triggers", True) != keep_triggers:   # progress from 1.0.0 kept every trigger
         state = {}
@@ -802,8 +817,8 @@ class Crawl:
     def harvest(self, folder: Path, path: Path) -> None:
         """Read one output and add what it holds."""
         rel = str(path.relative_to(folder))
-        stem = str(path.with_suffix("").relative_to(folder))
-        if rel in self.seen or stem in self.done_stems:  # read in an earlier run, or a video's first-frame PNG
+        stem = _output_stem(path, folder)
+        if rel in self.seen or stem in self.done_stems:  # read before, or a video's first-frame PNG or -audio copy
             return
         try:
             fields, size = read_fields(path)

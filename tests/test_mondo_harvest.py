@@ -247,6 +247,36 @@ class CrawlTests(unittest.TestCase):
         self.assertEqual((run["file"], run["seed"]), ("Clip_00001.mp4", 77))
         self.assertEqual((p["setups"][0]["width"], p["setups"][0]["height"]), (32, 16))
 
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
+    def test_video_combine_audio_copy_counts_once(self):
+        g = graph("waves on a pebble beach", 78, prefix="Clip")
+        g["60"] = {"class_type": "VHS_VideoCombine", "inputs": {"filename_prefix": "Clip", "images": ["8", 0]}}
+        comment = json.dumps({"prompt": json.dumps(g), "workflow": {"nodes": []}})
+        for name in ("Clip_00001.mp4", "Clip_00001-audio.mp4"):
+            subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=32x16:d=0.1", "-metadata",
+                            f"comment={comment}", "-pix_fmt", "yuv420p", str(self.dir / name)], check=True)
+        self.put("Clip_00001.png", g)
+        h = ch.crawl(self.dir)
+        [p] = h["prompts"]
+        self.assertEqual(p["images"], 1)
+        self.assertEqual(p["setups"][0]["runs"][0]["file"], "Clip_00001.mp4")
+        self.assertEqual((h["files_with_prompts"], h["files_without_prompts"]), (1, []))
+
+    def test_audio_copy_stem_and_order(self):
+        d = Path("/x")
+        self.assertEqual(ch._output_stem(d / "a" / "clip_00001-audio.mp4", d), "a/clip_00001")
+        self.assertEqual(ch._output_stem(d / "still-audio.png", d), "still-audio")    # only videos have copies
+
+    def test_progress_from_before_keeps_the_audio_copy_as_read(self):
+        clip = self.dir / "clip_00001-audio.mp4"
+        clip.write_bytes(b"x")
+        cp = self.dir / "progress.json"
+        cp.write_text(json.dumps(dict(format=ch.PARTIAL_FORMAT, folder=str(self.dir.resolve()), recursive=True,
+                                      seen={clip.name: ch._file_id(clip)}, records=[], unread=[],
+                                      done_stems=["clip_00001-audio"], negatives=[], fields={})))
+        state = ch._load_partial(cp, self.dir.resolve(), True, [clip.resolve()], lambda *_: None)
+        self.assertIn("clip_00001", state["done_stems"])
+
     def test_files_without_data_and_broken_files_are_listed_not_fatal(self):
         png(self.dir / "plain.png", {})
         (self.dir / "broken.png").write_bytes(b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR")
