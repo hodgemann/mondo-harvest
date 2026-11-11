@@ -34,6 +34,8 @@ import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
+__version__ = "1.0.0"
+
 APP = Path(__file__).resolve().parent
 HARVESTS = APP / "harvests"
 FORMAT = "mondo-harvest/1"
@@ -941,6 +943,7 @@ def _merge_command(harvests: list[Path]) -> str:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--version", action="version", version=f"mondo-harvest {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("crawl", help="harvest folders into one harvest file each")
     c.add_argument("folders", nargs="+", type=Path)

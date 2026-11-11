@@ -1,5 +1,9 @@
 # mondo-harvest
 
+[![tests](https://github.com/hodgemann/mondo-harvest/actions/workflows/tests.yml/badge.svg)](https://github.com/hodgemann/mondo-harvest/actions/workflows/tests.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 Harvest the prompts left inside AI-generated images and videos, and merge them into
 [Mondocraft](#merging-into-mondocraft)'s saved prompts. The crawl works on its own; the merge works with Mondocraft.
 
@@ -37,6 +41,16 @@ information, including fields it did not take a prompt from.
 
 Python 3.10 or later, with no other packages. Reading videos needs `ffprobe` (part of FFmpeg) on the PATH. Merging
 needs a Mondocraft installation (see below).
+
+## Install
+
+mondo-harvest is a single file. Clone the repository:
+
+    git clone https://github.com/hodgemann/mondo-harvest.git
+    cd mondo-harvest
+
+or download `mondo_harvest.py` from the [latest release](https://github.com/hodgemann/mondo-harvest/releases/latest).
+`python3 mondo_harvest.py --version` prints the version.
 
 ## Crawl
 
@@ -102,6 +116,10 @@ Merge while Mondocraft is stopped, or reload its page afterwards.
 
 The tests build small synthetic outputs in a temporary folder and merge into a stand-in for Mondocraft.
 
+## Changes
+
+See [`CHANGELOG.md`](CHANGELOG.md).
+
 ## License
 
-MIT; see `LICENSE`.
+MIT; see [`LICENSE`](LICENSE).

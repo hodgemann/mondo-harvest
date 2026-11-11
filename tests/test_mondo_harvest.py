@@ -568,5 +568,10 @@ class FakeMondocraft:
         Path(path).write_text(text)
 
 
+class VersionTest(unittest.TestCase):
+    def test_version_file_matches_module(self):
+        self.assertEqual((ROOT / "VERSION").read_text().strip(), ch.__version__)
+
+
 if __name__ == "__main__":
     unittest.main()
