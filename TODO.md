@@ -7,5 +7,3 @@
   library. ComfyUI asks each node for its options (`INPUT_TYPES`) when the page loads, so if the node reads the
   library file each time, a normal page reload, or ComfyUI's Refresh (the R key), shows newly added prompts without
   restarting ComfyUI. A library of thousands of prompts needs a searchable picker rather than a plain dropdown.
-- [ ] A prompt viewer/editor, so the user can easily scroll through their saved prompts and choose to edit or remove
-  them.
