@@ -2,6 +2,12 @@
 
 All notable changes to mondo-harvest are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- The README and `--help` describe the harvest file as the result; merging into Mondocraft is an optional second step.
+
 ## [1.1.0] - 2026-11-11
 
 ### Added
