@@ -1,4 +1,4 @@
-"""mondo-harvest: harvest the prompts left in AI-generated images and videos, and merge them into Mondocraft.
+"""mondo-harvest: harvest the prompts left in AI-generated images and videos into a JSON harvest file.
 
     python3 mondo_harvest.py crawl FOLDER [FOLDER ...] [--out DIR] [--no-recurse]
     python3 mondo_harvest.py merge HARVEST.json [...] [--mondocraft DIR] [--workspace NAME] [--dry-run]
@@ -12,8 +12,8 @@ in their description, comment, caption and similar fields (PNG text, EXIF, XMP, 
 prompt is listed once (runs of white space count as one space), with its setups and, under each, the outputs it
 made. The harvest also counts every metadata field it met, to show where a folder's files keep their information.
 
-merge adds the harvested prompts to a Mondocraft workspace's saved prompts, using Mondocraft's own code from its
-folder, so encryption and workspaces work as in Mondocraft. A prompt already saved is not added again; merging the
+merge, an optional second step for Mondocraft users, adds a harvest file's prompts to a Mondocraft workspace's saved
+prompts, using Mondocraft's own code from its folder, so encryption and workspaces work as in Mondocraft. A prompt already saved is not added again; merging the
 same harvest twice changes nothing. crawl needs only Python 3.10+ (and ffprobe for videos).
 """
 from __future__ import annotations

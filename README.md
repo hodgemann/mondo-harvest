@@ -4,12 +4,15 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Harvest the prompts left inside AI-generated images and videos, and merge them into
-[Mondocraft](#merging-into-mondocraft)'s saved prompts. The crawl works on its own; the merge works with Mondocraft.
+Harvest the prompts left inside AI-generated images and videos into a JSON file.
 
-Point it at a folder of outputs, even one with tens of thousands of files, and it lists every distinct prompt once,
-with what made each output: model, LoRAs, negative prompt, sampler settings and seed. Only metadata is read; image and
-video data are never decoded, and the source files are never changed.
+Point it at a folder of outputs, even one with tens of thousands of files, and it saves one harvest file listing every
+distinct prompt once, with what made each output: model, LoRAs, negative prompt, sampler settings and seed. Only
+metadata is read; image and video data are never decoded, and the source files are never changed. The harvest file is
+the result; nothing else is needed to use it.
+
+If you use Mondocraft, an optional second step adds a harvest file's prompts to its saved prompts (see
+[Optional: merging into Mondocraft](#optional-merging-into-mondocraft)).
 
 ## What it reads
 
@@ -65,7 +68,7 @@ Each folder named gets one harvest file, `harvests/<folder name>.json`, with its
 replaces its file.
 
 The crawl prints its progress every 500 files and, at the end, the totals, the metadata fields it met (how many files
-had each, and how many of those gave a prompt) and the merge commands to copy.
+had each, and how many of those gave a prompt) and, for the optional merge, the commands to copy.
 
 A long crawl saves its progress every two minutes, and when you press Ctrl+C, to `harvests/<folder name>.json.partial`.
 If the crawl is cut short, run the same command again: it carries on from there and reads again any files that
@@ -112,9 +115,11 @@ A prompt is an image or a video prompt by its output. `t2i` (ComfyUI only) is fa
 generation. A prompt used with different settings has one setup for each; `unused_in` lists the files whose workflow
 held the text without using it.
 
-## Merging into Mondocraft
+## Optional: merging into Mondocraft
 
-Mondocraft, an AI image and video generation app (its GitHub release is coming), keeps saved prompts per workspace. `merge` adds harvested prompts to one:
+This step is only for Mondocraft users; the harvest file is complete without it. Mondocraft, an AI image and
+video generation app (its GitHub release is coming), keeps saved prompts per workspace. `merge` adds a harvest file's
+prompts to one:
 
     python3 mondo_harvest.py merge harvests/outputs.json --dry-run     # counts only, writes nothing
     python3 mondo_harvest.py merge harvests/outputs.json               # into the Main workspace
