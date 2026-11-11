@@ -13,8 +13,9 @@ prompt is listed once (runs of white space count as one space), with its setups 
 made. The harvest also counts every metadata field it met, to show where a folder's files keep their information.
 
 merge, an optional second step for Mondocraft users, adds a harvest file's prompts to a Mondocraft workspace's saved
-prompts, using Mondocraft's own code from its folder, so encryption and workspaces work as in Mondocraft. A prompt already saved is not added again; merging the
-same harvest twice changes nothing. crawl needs only Python 3.10+ (and ffprobe for videos).
+prompts, using Mondocraft's own code from its folder, so encryption and workspaces work as in Mondocraft. A prompt
+already saved is not added again; merging the same harvest twice changes nothing. crawl needs only Python 3.10+ (and
+ffprobe for videos).
 """
 from __future__ import annotations
 
