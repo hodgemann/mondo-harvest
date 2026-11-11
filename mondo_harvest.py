@@ -1022,13 +1022,16 @@ def merge_files(harvests: list[Path], server, workspace: str | None = None, dry_
 
 # ---------------------------------------------------------------- command line
 
-def _merge_command(harvests: list[Path]) -> str:
-    """The merge command to copy after a crawl: Mondocraft's own Python when it is there (it has the packages
-    Mondocraft needs), else this one."""
+def _merge_command(harvests: list[Path]) -> str | None:
+    """The merge command to copy after a crawl, or None when Mondocraft is not installed. Only the one folder
+    DEFAULT_MONDOCRAFT names (MONDOCRAFT, else ~/mondocraft) is checked; nothing is searched for. The command uses
+    Mondocraft's own Python when it is there (it has the packages Mondocraft needs), else this one."""
     mc = DEFAULT_MONDOCRAFT.resolve()
+    if not (mc / "server.py").is_file():
+        return None
     python = mc / ".venv" / "bin" / "python"
     parts = [python if python.exists() else Path(sys.executable), Path(__file__).resolve(), "merge",
-             *(p.resolve() for p in harvests), "--mondocraft", mc if (mc / "server.py").exists() else "MONDOCRAFT_FOLDER"]
+             *(p.resolve() for p in harvests), "--mondocraft", mc]
     return " ".join(shlex.quote(str(x)) for x in parts)
 
 
@@ -1088,8 +1091,8 @@ def main(argv=None) -> int:
                 if len(h["lora_triggers"]) > 25:
                     print(f"    {len(h['lora_triggers']) - 25} more are listed in the harvest file.")
             written.append(path)
-        if written:
-            cmd = _merge_command(written)
+        cmd = _merge_command(written) if written else None
+        if cmd:
             print(f"\nTo merge into Mondocraft's Main workspace (add --workspace NAME for another):\n"
                   f"  {cmd} --dry-run\n  {cmd}")
     elif a.cmd == "merge":

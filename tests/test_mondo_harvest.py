@@ -560,6 +560,18 @@ class ResumeTests(unittest.TestCase):
             ch.main(["crawl", str(self.src), "--out", str(out)])
         self.assertEqual(sorted(p.name for p in out.iterdir()), ["src.json"])
 
+    def test_merge_command_printed_only_when_mondocraft_is_installed(self):
+        out, mc = self.dir / "out", self.dir / "mondocraft"
+        mc.mkdir()
+        for installed in (False, True):
+            if installed:
+                (mc / "server.py").write_text("")
+            with patch.object(ch, "DEFAULT_MONDOCRAFT", mc), patch("builtins.print") as printed:
+                ch.main(["crawl", str(self.src), "--out", str(out)])
+            text = "\n".join(str(c.args[0]) for c in printed.call_args_list if c.args)
+            self.assertEqual(" merge " in text, installed)
+            self.assertNotIn("MONDOCRAFT_FOLDER", text)
+
 
 class MergeTests(unittest.TestCase):
     def setUp(self):

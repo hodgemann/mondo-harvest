@@ -7,6 +7,8 @@ All notable changes to mondo-harvest are recorded here. Versions follow [Semanti
 ### Changed
 
 - The README and `--help` describe the harvest file as the result; merging into Mondocraft is an optional second step.
+- The crawl prints the merge commands only when Mondocraft is installed (in `~/mondocraft`, or the folder the
+  `MONDOCRAFT` environment variable names). Nothing is searched for.
 
 ## [1.1.0] - 2026-11-11
 

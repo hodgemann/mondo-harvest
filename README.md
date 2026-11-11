@@ -68,7 +68,8 @@ Each folder named gets one harvest file, `harvests/<folder name>.json`, with its
 replaces its file.
 
 The crawl prints its progress every 500 files and, at the end, the totals, the metadata fields it met (how many files
-had each, and how many of those gave a prompt) and, for the optional merge, the commands to copy.
+had each, and how many of those gave a prompt). If Mondocraft is installed, it also prints the commands to copy for
+the optional merge.
 
 A long crawl saves its progress every two minutes, and when you press Ctrl+C, to `harvests/<folder name>.json.partial`.
 If the crawl is cut short, run the same command again: it carries on from there and reads again any files that
