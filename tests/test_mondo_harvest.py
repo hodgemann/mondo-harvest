@@ -106,7 +106,8 @@ def jpeg(path: Path, exif: bytes = b"", xmp: str = "", iptc: dict | None = None,
 
 XMP = """<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
 <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmp="http://ns.adobe.com/xap/1.0/"
- xmp:CreatorTool="Some Image Service 2.1">
+ xmlns:Iptc4xmpExt="http://iptc.org/std/Iptc4xmpExt/2008-02-29/" xmp:CreatorTool="Some Image Service 2.1"
+ Iptc4xmpExt:DigitalSourceType="http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia">
 <dc:description><rdf:Alt><rdf:li xml:lang="x-default">{text}</rdf:li></rdf:Alt></dc:description>
 <dc:rights><rdf:Alt><rdf:li xml:lang="x-default">Copyright 2025 somebody, all rights reserved</rdf:li></rdf:Alt></dc:rights>
 <dc:subject><rdf:Bag><rdf:li>lighthouse</rdf:li><rdf:li>storm</rdf:li><rdf:li>sea</rdf:li><rdf:li>night</rdf:li></rdf:Bag></dc:subject>
@@ -291,6 +292,43 @@ class OtherMetadataTests(unittest.TestCase):
                      "iptc:Keywords"):
             self.assertIn(name, f)
         self.assertEqual(f["xmp:dc:subject"]["prompts"], 0)
+
+    def test_photos_and_scans_give_no_prompts_unless_marked_as_ai(self):
+        museum = """<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmpRights="http://ns.adobe.com/xap/1.0/rights/"
+ xmlns:mus="http://example.org/collection/1.0/" xmpRights:Marked="True" mus:ObjectNumber="12.34">
+<dc:description><rdf:Alt><rdf:li xml:lang="x-default">Bronze statuette of a dancer, cast in two parts, Roman, 2nd century</rdf:li></rdf:Alt></dc:description>
+<mus:Title>Statuette of a dancing satyr with cymbals</mus:Title>
+</rdf:Description></rdf:RDF></x:xmpmeta>"""
+        jpeg(self.dir / "scan.jpg", xmp=museum, iptc={120: "Bronze statuette of a dancer, cast in two parts", 80: "A Photographer"},
+             comment="Gift of a generous donor in memory of a collector, 1917")
+        jpeg(self.dir / "photo.jpg", exif=tiff({0x010E: "sunset over the harbour with fishing boats", 0x010F: "Nikon"}))
+        jpeg(self.dir / "ai.jpg", exif=tiff({0x010E: "a bronze robot dancing in a museum hall", 0x8298: "Some AI Service"}))
+        h, by_text = self.crawl()
+        self.assertEqual(list(by_text), [])
+        self.assertIn("xmp:collection:ObjectNumber", h["metadata_fields"])        # unknown namespace named, version skipped
+        data = (self.dir / "ai.jpg").read_bytes()
+        (self.dir / "ai.jpg").write_bytes(data[:2] + b"\xff\xeb\0\x0eJP\0\x01\0\0\0\0jumb" + data[2:])   # a C2PA block
+        _, by_text = self.crawl()
+        self.assertEqual(list(by_text), ["a bronze robot dancing in a museum hall"])
+
+    def test_titles_are_not_prompts_but_custom_prompt_fields_are(self):
+        custom = """<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description xmlns:gen="http://example.com/genservice/2.0/" gen:Prompt="a paper boat sailing down a rainy street"
+ gen:Notes="rendered on the fast queue with default settings"/></rdf:RDF></x:xmpmeta>"""
+        webp(self.dir / "a.webp", xmp=custom.encode())
+        png(self.dir / "b.png", {"Title": "Episode twelve of the long running space series"})
+        _, by_text = self.crawl()
+        self.assertEqual(list(by_text), ["a paper boat sailing down a rainy street"])
+        self.assertEqual(by_text["a paper boat sailing down a rainy street"]["setups"][0]["source"], "xmp:genservice:Prompt")
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
+    def test_video_title_is_not_a_prompt(self):
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=32x16:d=0.1", "-metadata",
+                        "title=Space Series (S06E01) The Long Way Home", "-pix_fmt", "yuv420p",
+                        str(self.dir / "ep.mp4")], check=True)
+        h, by_text = self.crawl()
+        self.assertEqual((by_text, h["metadata_fields"]["video:title"]["prompts"]), ({}, 0))
 
     def test_xmp_in_webp_and_png(self):
         webp(self.dir / "a.webp", xmp=XMP.format(text="a red kite over the moors").encode())

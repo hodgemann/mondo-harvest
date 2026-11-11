@@ -27,11 +27,14 @@ video data are never decoded, and the source files are never changed.
   - whether a reference image fed the generation.
 
   A video's first-frame PNG saved beside it counts as the same output.
-- **Everything else**: prompts that generators and services leave in description, comment, caption or title fields:
-  PNG text chunks, EXIF (ImageDescription, UserComment, XPComment, …), XMP (`dc:description` and others), IPTC
-  (Caption, Headline) and video tags (`description`, `comment`, …). A field counts only when its name says it can hold
-  a prompt and its text reads like one, so camera, software, author and copyright fields, short labels, links, IDs and
-  credit lines are skipped. JSON fields are read for their prompt, negative prompt, seed and model keys.
+- **Everything else**: prompts that generators and services leave in description, comment or caption fields: PNG
+  text chunks, EXIF (ImageDescription, UserComment, XPComment, …), XMP (`dc:description` and others, plus any field
+  named for a prompt), IPTC (Caption) and video tags (`description`, `comment`, `prompt`, …). A field counts only when
+  its name says it can hold a prompt and its text reads like one, so titles, camera, software, author and copyright
+  fields, short labels, links, IDs and credit lines are skipped. A file whose metadata marks it as a photograph or a
+  rights-managed scan (rights, author or camera fields) gives no prompts unless it also carries an AI marker (a C2PA
+  credential, an AIGC label, or IPTC's "trained algorithmic media" source type): museum and stock-photo captions read
+  much like prompts. JSON fields are read for their prompt, negative prompt, seed and model keys.
   `Prompt / Negative prompt: … / Steps: …, Seed: …` text is split into its parts. Every prompt records the field it
   came from.
 

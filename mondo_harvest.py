@@ -147,7 +147,8 @@ def _xmp(data: bytes, fields: dict) -> None:
 
     def name(tag):
         uri, _, local = tag[1:].partition("}") if tag.startswith("{") else ("", "", tag)
-        prefix = XMP_PREFIX.get(uri) or uri.rstrip("/#").rsplit("/", 1)[-1] or "xmp"
+        prefix = XMP_PREFIX.get(uri) or next((seg for seg in reversed(re.split(r"[/#:]", uri))     # skip versions
+                                              if seg and not re.fullmatch(r"[\d.-]+|v\d[\d.]*", seg)), "xmp")
         return f"xmp:{prefix}:{local}"
 
     parents = {child: parent for parent in root.iter() for child in parent}
@@ -340,12 +341,19 @@ def read_metadata(path: Path) -> tuple[dict | None, dict | None, tuple[int, int]
 # ---------------------------------------------------------------- prompts outside ComfyUI
 #
 # Other generators and providers sometimes leave the prompt in a description or comment field. A field counts only
-# when its name says it can hold a prompt and its text reads like one: camera, software, author and copyright fields
-# never do, and short labels, links, IDs and credit lines are skipped. A JSON field is read for its prompt, negative
-# prompt, seed and model keys. "Prompt / Negative prompt: / Steps: …" text is split into its parts.
+# when its name says it can hold a prompt and its text reads like one: titles, camera, software, author and copyright
+# fields never do, and short labels, links, IDs and credit lines are skipped. XMP fields of namespaces not listed in
+# XMP_PREFIX count only when their name says "prompt". A file whose metadata marks it as a photograph or a
+# rights-managed scan (rights, author or camera fields) gives no prompts unless it also carries an AI marker (C2PA,
+# an AIGC label, or an IPTC digital source type of algorithmic media): museum and stock captions read like prompts.
+# A JSON field is read for its prompt, negative prompt, seed and model keys. "Prompt / Negative prompt: / Steps: …"
+# text is split into its parts.
 
-PROMPT_FIELD = re.compile(r"description|comment|caption|prompt|parameters|title|subject|headline|instructions|"
-                          r"abstract|synopsis|summary|dream|input", re.I)
+PROMPT_FIELD = re.compile(r"description|comment|caption|prompt|parameters|subject|instructions|abstract|synopsis|"
+                          r"summary|dream|input", re.I)
+PHOTO_SIGN = re.compile(r"^(?:xmp:xmpRights:|xmp:dc:(?:rights|creator)$|iptc:(?:Byline|Copyright)$|"
+                        r"exif:(?:Copyright|Artist|Make|Model|CameraOwnerName)$|xmp:tiff:(?:Make|Model)$|xmp:aux:)")
+KNOWN_XMP = {f"xmp:{p}:" for p in XMP_PREFIX.values()}
 NOT_PROMPT_FIELD = re.compile(r"make|model|software|artist|author|byline|copyright|rights|creatortool|date|time|"
                               r"encoder|handler|brand|documentid|instanceid|xmpmm|history|writer|credit|source|"
                               r"keywords|owner|c2pa|workflow|exif:0x|dc:subject", re.I)
@@ -382,11 +390,20 @@ def _settings_text(text: str) -> dict | None:
     return out
 
 
+def _ai_marked(fields: dict) -> bool:
+    return any(name == "c2pa" or "aigc" in name.lower() or
+               (name.endswith("DigitalSourceType") and "algorithmic" in value.lower()) for name, value in fields.items())
+
+
 def other_prompts(fields: dict) -> list[dict]:
     """Prompts found in a file's non-ComfyUI metadata: [{text, source, negative?, seed?, models?, …}]."""
     found, seen = [], set()
+    if any(PHOTO_SIGN.match(name) for name in fields) and not _ai_marked(fields):
+        return found
     for name, value in fields.items():
-        if not value or NOT_PROMPT_FIELD.search(name):
+        if not value or NOT_PROMPT_FIELD.search(name) or (
+                name.startswith("xmp:") and name[:name.index(":", 4) + 1] not in KNOWN_XMP
+                and "prompt" not in name.lower()):
             continue
         data = _as_graph(value) if value.lstrip().startswith("{") else None
         if data is not None:

@@ -10,6 +10,13 @@ All notable changes to mondo-harvest are recorded here. Versions follow [Semanti
   spell part of the LoRA's file name. The crawl lists them, and the harvest file keeps them under `lora_triggers`.
   `--keep-triggers` turns this off.
 
+### Changed
+
+- Files whose metadata marks them as photographs or rights-managed scans (camera, author, copyright or rights fields)
+  give no prompts unless they also carry an AI marker (C2PA, an AIGC label, or IPTC's algorithmic-media source type).
+- Title and headline fields are no longer read as prompts. XMP fields of unknown namespaces count only when their name
+  says "prompt", and XMP namespace prefixes skip version numbers in the namespace URI.
+
 ## [1.0.0] - 2026-11-11
 
 First public release.
