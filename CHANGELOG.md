@@ -2,7 +2,7 @@
 
 All notable changes to mondo-harvest are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.1.1] - 2026-11-11
 
 ### Changed
 
@@ -40,5 +40,6 @@ First public release.
 - `workspaces`: list Mondocraft's workspaces.
 - `--version`.
 
+[1.1.1]: https://github.com/hodgemann/mondo-harvest/releases/tag/v1.1.1
 [1.1.0]: https://github.com/hodgemann/mondo-harvest/releases/tag/v1.1.0
 [1.0.0]: https://github.com/hodgemann/mondo-harvest/releases/tag/v1.0.0
