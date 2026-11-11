@@ -2,6 +2,14 @@
 
 All notable changes to mondo-harvest are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- LoRA trigger words at the start of a ComfyUI prompt are taken off and kept with the LoRA (`"trigger"`), when they
+  spell part of the LoRA's file name. The crawl lists them, and the harvest file keeps them under `lora_triggers`.
+  `--keep-triggers` turns this off.
+
 ## [1.0.0] - 2026-11-11
 
 First public release.

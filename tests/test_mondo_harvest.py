@@ -352,6 +352,86 @@ class OtherMetadataTests(unittest.TestCase):
         self.assertEqual((p["kind"], p["setups"][0]["source"]), ("video", "video:description"))
 
 
+OHWX = [{"on": True, "lora": "chars/ohwx_woman_v2.safetensors", "strength": 0.8},
+        {"on": True, "lora": "Mjolnir_Style-FLUX.safetensors", "strength": 1.0}]
+
+
+class TriggerTests(unittest.TestCase):
+    """LoRA trigger words at the start of a prompt are taken off and kept with the LoRA."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir)
+
+    def put(self, name, g, wf=None):
+        png(self.dir / name, {"prompt": json.dumps(g), **({"workflow": json.dumps(wf)} if wf else {})})
+
+    def strip(self, text, *names):
+        return ch.strip_triggers(text, [{"name": n, "strength": 1} for n in names])
+
+    def test_trigger_spelled_by_the_lora_name_is_taken_off(self):
+        self.assertEqual(self.strip("ohwx woman, a portrait in the rain", "chars/ohwx_woman_v2.safetensors"),
+                         ("a portrait in the rain", {"chars/ohwx_woman_v2.safetensors": "ohwx woman"}))
+        self.assertEqual(self.strip("pixelart. a castle on a hill", "pixel-art-xl-v1.1.safetensors")[0],
+                         "a castle on a hill")
+        self.assertEqual(self.strip("(ohwx:1.2), a man walking a dog", "flux\\OhwxMan_e10.safetensors")[0],
+                         "a man walking a dog")
+        self.assertEqual(self.strip("ohwx woman, Mjolnir style, a woman holding a hammer",
+                                    "ohwx_woman.safetensors", "Mjolnir_Style-FLUX.safetensors"),
+                         ("a woman holding a hammer", {"ohwx_woman.safetensors": "ohwx woman",
+                                                       "Mjolnir_Style-FLUX.safetensors": "Mjolnir style"}))
+
+    def test_text_that_is_not_a_trigger_stays(self):
+        for text, name in (("a woman, red dress, in the rain", "woman_detailer.safetensors"),   # not the name
+                           ("style, a cat sitting on a mat", "anime_style.safetensors"),         # name noise only
+                           ("flux, a cat sleeping on a sofa", "cat-FLUX.safetensors"),
+                           ("art, a smart robot painting", "smart_robot.safetensors"),          # inside a word
+                           ("ohwx woman wearing a red dress", "ohwx_woman.safetensors"),        # no separator
+                           ("ohwx woman, cat", "ohwx_woman.safetensors"),                       # too little left
+                           ("a cat. ohwx, on a mat", "ohwx.safetensors")):                      # not at the start
+            self.assertEqual(self.strip(text, name), (text, {}), text)
+
+    def test_crawl_keeps_the_trigger_with_the_lora_and_joins_the_clean_prompt(self):
+        self.put("Out_00001_.png", graph("ohwx woman, a portrait in the rain", 1, loras=OHWX))
+        self.put("Out_00002_.png", graph("a portrait in the rain", 2, loras=OHWX))
+        h = ch.crawl(self.dir, log=lambda *_: None)
+        [p] = h["prompts"]
+        self.assertEqual(p["text"], "a portrait in the rain")
+        with_trigger, without = p["setups"]
+        self.assertEqual(with_trigger["loras"][0], {"name": "chars/ohwx_woman_v2.safetensors", "strength": 0.8,
+                                                    "trigger": "ohwx woman"})
+        self.assertNotIn("trigger", without["loras"][0])
+        self.assertEqual(h["lora_triggers"], [{"lora": "chars/ohwx_woman_v2.safetensors", "trigger": "ohwx woman",
+                                               "prompts": 1}])
+
+    def test_unused_workflow_text_loses_its_trigger_too(self):
+        wf = {"nodes": [{"type": "CLIPTextEncode", "mode": 4, "widgets_values": ["Mjolnir style, a hammer on an anvil"]},
+                        {"type": "CLIPTextEncode", "widgets_values": ["ohwx woman, a portrait in the rain"]}]}
+        self.put("Out_00001_.png", graph("ohwx woman, a portrait in the rain", 1, loras=OHWX), wf)
+        by_text = {p["text"]: p for p in ch.crawl(self.dir, log=lambda *_: None)["prompts"]}
+        self.assertEqual(set(by_text), {"a portrait in the rain", "a hammer on an anvil"})
+        self.assertNotIn("unused_in", by_text["a portrait in the rain"])
+        self.assertEqual(by_text["a hammer on an anvil"]["unused_in"], ["Out_00001_.png"])
+
+    def test_keep_triggers_and_lora_switched_off(self):
+        self.put("Out_00001_.png", graph("ohwx woman, a portrait in the rain", 1, loras=OHWX))
+        self.put("Out_00002_.png", graph("ohwx woman, a dancer on a stage", 2, loras=[{**OHWX[0], "on": False}]))
+        texts = {p["text"] for p in ch.crawl(self.dir, keep_triggers=True, log=lambda *_: None)["prompts"]}
+        self.assertEqual(texts, {"ohwx woman, a portrait in the rain", "ohwx woman, a dancer on a stage"})
+        texts = {p["text"] for p in ch.crawl(self.dir, log=lambda *_: None)["prompts"]}
+        self.assertEqual(texts, {"a portrait in the rain", "ohwx woman, a dancer on a stage"})
+
+    def test_progress_saved_with_the_other_setting_is_not_used(self):
+        self.put("Out_00001_.png", graph("ohwx woman, a portrait in the rain", 1, loras=OHWX))
+        cp = self.dir.parent / (self.dir.name + ".partial")
+        self.addCleanup(cp.unlink, missing_ok=True)
+        cp.write_text(json.dumps(dict(format=ch.PARTIAL_FORMAT, folder=str(self.dir.resolve()), recursive=True,
+                                      seen={"Out_00001_.png": ch._file_id(self.dir / "Out_00001_.png")},
+                                      records=[], unread=[], done_stems=[], negatives=[], fields={})))
+        h = ch.crawl(self.dir, checkpoint=cp, log=lambda *_: None)                # 1.0.0 progress kept triggers
+        self.assertEqual([p["text"] for p in h["prompts"]], ["a portrait in the rain"])
+
+
 class ResumeTests(unittest.TestCase):
     """An interrupted crawl saves its progress and a later crawl of the same folder carries on from it."""
 

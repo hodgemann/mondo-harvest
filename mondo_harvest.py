@@ -546,6 +546,61 @@ def _loras(graph: dict, ids: list[str]) -> list[dict]:
     return list(out.values())
 
 
+# A LoRA's trigger words are often in its file name ("ohwx_woman_v2.safetensors" is triggered by "ohwx woman"), and
+# sit at the start of the prompt. Without the LoRA they only pollute the prompt, so they are taken off and kept with
+# the LoRA instead. Name parts that say only what the file is (version, base model, kind) never count as a trigger.
+LORA_NAME_NOISE = re.compile(r"(?:v|\d+|v\d+|e\d+|r\d+|rank\d+|epoch\d*|step\d*|fp\d+|bf\d+|lora|lycoris|locon|loha|lokr|"
+                             r"dora|flux\d*|f1|dev|schnell|sd\d*|sdxl|xl|pony|illustrious|il|noob|sd3|wan\d*|hunyuan|hv|"
+                             r"ltx|qwen|chroma|t2v|i2v|ti2v|trigger|style|by)")
+PROMPT_SEGMENT = re.compile(r"\s*(.+?)\s*(?:[,;\n]|\.(?=\s)|$)", re.S)
+
+
+def _name_tokens(name: str) -> list[str]:
+    """A LoRA file name's words: "flux/OhwxWoman_v2.safetensors" -> ["ohwx", "woman", "v", "2"]."""
+    base = re.split(r"[\\/]", name)[-1]
+    if base.lower().endswith(MODEL_EXT):
+        base = base.rsplit(".", 1)[0]
+    base = re.sub(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])", " ", base)
+    return re.findall(r"[a-z0-9]+", base.lower())
+
+
+def _is_trigger(segment: str, tokens: list[str]) -> bool:
+    """Whether a short piece of prompt is spelled by consecutive words of a LoRA's name, separators aside:
+    "ohwx woman", "Pixel Art" and "pixelart" all match "pixel_art_xl"/"ohwx_woman"; "art" does not match "smart"."""
+    words = re.findall(r"[a-z0-9]+", re.sub(r":\s*-?\d+(?:\.\d+)?\s*\)", ")", segment.lower()))  # (word:1.2)
+    want = "".join(words)
+    if not 1 <= len(words) <= 4 or len(want) < 3:
+        return False
+    for i in range(len(tokens)):
+        joined = ""
+        for j in range(i, len(tokens)):
+            joined += tokens[j]
+            if joined == want:
+                return not all(LORA_NAME_NOISE.fullmatch(t) for t in tokens[i:j + 1])
+            if not want.startswith(joined):
+                break
+    return False
+
+
+def strip_triggers(text: str, loras: list[dict]) -> tuple[str, dict]:
+    """The prompt without the LoRA trigger words at its start, and {LoRA name: trigger} for those taken off.
+    Only whole comma-separated pieces are taken, and only while what is left still reads as a prompt."""
+    names = [(lora["name"], _name_tokens(lora["name"])) for lora in loras]
+    rest, found = text, {}
+    while names:
+        m = PROMPT_SEGMENT.match(rest)
+        remaining = rest[m.end():]
+        hit = next((name for name, tokens in names if _is_trigger(m[1], tokens)), None) if remaining.strip() else None
+        if hit is None:
+            break
+        found[hit] = f"{found[hit]}, {m[1]}" if hit in found else m[1]
+        rest = remaining
+    rest = rest.lstrip(" \t\n,;.")
+    if not found or not _prompt_like(rest):
+        return text, {}
+    return rest, found
+
+
 def _names(graph: dict, ids: list[str], keys: tuple) -> list[str]:
     out = []
     for nid in reversed(ids):
@@ -657,25 +712,28 @@ def _save_partial(checkpoint: Path, state: dict) -> None:
 
 
 def crawl(folder: Path, recurse: bool = True, log=print, checkpoint: Path | None = None,
-          save_every: float = 120.0) -> dict:
+          save_every: float = 120.0, keep_triggers: bool = False) -> dict:
     """Harvest one folder (and its subfolders unless recurse is False) into a harvest dict.
     With a checkpoint file, progress is saved there every save_every seconds (and on Ctrl+C), and a later crawl of
-    the same folder carries on from it. The caller removes the checkpoint once the harvest is written."""
+    the same folder carries on from it. The caller removes the checkpoint once the harvest is written.
+    LoRA trigger words are taken off the start of ComfyUI prompts unless keep_triggers is True."""
     folder = folder.resolve()
     files = sorted((p for p in (folder.rglob("*") if recurse else folder.iterdir())
                     if p.is_file() and p.suffix.lower() in IMAGE_EXT + VIDEO_EXT),
                    key=lambda p: (str(p.parent), p.suffix.lower() not in VIDEO_EXT, p.name))
     state = _load_partial(checkpoint, folder, recurse, files, log) or {}
+    if state and state.get("keep_triggers", True) != keep_triggers:   # progress from 1.0.0 kept every trigger
+        state = {}
     c = Crawl(records={(k, n): rec for k, n, rec in state.get("records", [])}, seen=state.get("seen", {}),
               unread=state.get("unread", []), done_stems=set(state.get("done_stems", [])),
-              negatives=set(state.get("negatives", [])), fields=state.get("fields", {}))
+              negatives=set(state.get("negatives", [])), fields=state.get("fields", {}), keep_triggers=keep_triggers)
     saved_at = time.time()
 
     def save():
         _save_partial(checkpoint, dict(format=PARTIAL_FORMAT, folder=str(folder), recursive=recurse, seen=c.seen,
                                        records=[[k, n, rec] for (k, n), rec in c.records.items()], unread=c.unread,
                                        done_stems=sorted(c.done_stems), negatives=sorted(c.negatives),
-                                       fields=c.fields))
+                                       fields=c.fields, keep_triggers=keep_triggers))
 
     try:
         for i, path in enumerate(files, 1):
@@ -701,18 +759,26 @@ def crawl(folder: Path, recurse: bool = True, log=print, checkpoint: Path | None
                             images=sum(len(s["runs"]) for s in rec["setups"]), setups=rec["setups"],
                             **({"unused_in": rec["unused_in"]} if rec["unused_in"] else {})))
     prompts.sort(key=lambda p: (p["first_ts"], p["text"]))
+    triggers = {}
+    for p in prompts:
+        for lora, trigger in {(lora["name"], lora["trigger"]) for s in p["setups"] for lora in s.get("loras", [])
+                              if "trigger" in lora}:
+            triggers[lora, trigger] = triggers.get((lora, trigger), 0) + 1
     fields = {k: dict(files=v[0], prompts=v[1]) for k, v in sorted(c.fields.items(), key=lambda kv: (-kv[1][0], kv[0]))}
     return dict(format=FORMAT, folder=str(folder), recursive=recurse,
                 harvested_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 files_scanned=len(files), files_with_prompts=len(c.done_stems), prompts_found=len(prompts),
-                metadata_fields=fields, files_without_prompts=c.unread, errors=c.errors, prompts=prompts)
+                metadata_fields=fields, lora_triggers=[dict(lora=lora, trigger=t, prompts=n) for (lora, t), n in
+                                                      sorted(triggers.items(), key=lambda kv: (-kv[1], kv[0]))],
+                files_without_prompts=c.unread, errors=c.errors, prompts=prompts)
 
 
 class Crawl:
     """The running state of one crawl: prompt records keyed by (kind, normalised text), and bookkeeping."""
 
-    def __init__(self, records, seen, unread, done_stems, negatives, fields):
+    def __init__(self, records, seen, unread, done_stems, negatives, fields, keep_triggers=False):
         self.records, self.seen, self.unread, self.errors = records, seen, unread, []
+        self.keep_triggers = keep_triggers
         self.done_stems, self.negatives, self.fields = done_stems, negatives, fields   # fields: name -> [files, prompts]
 
     def harvest(self, folder: Path, path: Path) -> None:
@@ -776,10 +842,17 @@ class Crawl:
             run["seed"] = info["seeds"][0]
             if len(info["seeds"]) > 1:
                 run["more_seeds"] = info["seeds"][1:]
+        used = set()
         for text in info["positives"]:
-            self._use(kind, text, info["t2i"], setup, run, mtime)
+            text, triggers = (text, {}) if self.keep_triggers else strip_triggers(text, info["loras"])
+            used.add(norm(text))
+            self._use(kind, text, info["t2i"], {**setup, "loras": [
+                {**lora, "trigger": triggers[lora["name"]]} if lora["name"] in triggers else lora
+                for lora in setup["loras"]]} if triggers else setup, run, mtime)
         for text in info["others"]:
-            self._record(kind, text, True, mtime)["unused_in"].append(run["file"])
+            text = text if self.keep_triggers else strip_triggers(text, info["loras"])[0]
+            if norm(text) not in used:
+                self._record(kind, text, True, mtime)["unused_in"].append(run["file"])
         self.negatives.update(info["negatives"])
         return True
 
@@ -949,6 +1022,8 @@ def main(argv=None) -> int:
     c.add_argument("folders", nargs="+", type=Path)
     c.add_argument("--out", type=Path, default=HARVESTS, help="where harvest files go (default: harvests/)")
     c.add_argument("--no-recurse", action="store_true", help="read only the folder itself, not its subfolders")
+    c.add_argument("--keep-triggers", action="store_true",
+                   help="leave LoRA trigger words at the start of prompts (by default they are taken off)")
     m = sub.add_parser("merge", help="merge harvest files into a Mondocraft workspace's saved prompts")
     m.add_argument("harvests", nargs="+", type=Path)
     m.add_argument("--mondocraft", type=Path, help=f"your Mondocraft folder (default: {DEFAULT_MONDOCRAFT})")
@@ -969,7 +1044,7 @@ def main(argv=None) -> int:
             print(f"{folder}:")
             path = harvest_path(folder, a.out)
             try:
-                h = crawl(folder, recurse=not a.no_recurse, checkpoint=partial_path(path))
+                h = crawl(folder, recurse=not a.no_recurse, checkpoint=partial_path(path), keep_triggers=a.keep_triggers)
             except KeyboardInterrupt:
                 return 130
             tmp = path.with_suffix(".json.tmp")
@@ -987,6 +1062,13 @@ def main(argv=None) -> int:
                     print(f"    {name}: {n['files']} / {n['prompts']}")
                 if len(fields) > 25:
                     print(f"    {len(fields) - 25} more are listed in the harvest file.")
+            if h["lora_triggers"]:
+                print("  LoRA trigger words taken off the start of prompts (prompts / trigger / LoRA; "
+                      "--keep-triggers leaves them on):")
+                for t in h["lora_triggers"][:25]:
+                    print(f"    {t['prompts']}  {t['trigger']!r}  {t['lora']}")
+                if len(h["lora_triggers"]) > 25:
+                    print(f"    {len(h['lora_triggers']) - 25} more are listed in the harvest file.")
             written.append(path)
         if written:
             cmd = _merge_command(written)
