@@ -379,7 +379,7 @@ class OtherMetadataTests(unittest.TestCase):
                                                "low quality\nSteps: 30, Sampler: DPM++ 2M, CFG scale: 7.5, "
                                                "Seed: 12345, Size: 512x768, Model: dreamy_v2"})
         _, by_text = self.crawl()
-        [s] = by_text["a castle on a hill, <lora:mystyle:0.7>"]["setups"]
+        [s] = by_text["a castle on a hill"]["setups"]
         self.assertEqual((s["negative"], s["steps"], s["sampler"], s["cfg"], s["models"], s["runs"][0]["seed"]),
                          ("blurry, low quality", 30, "DPM++ 2M", 7.5, ["dreamy_v2"], 12345))
 
@@ -458,6 +458,24 @@ class TriggerTests(unittest.TestCase):
                            ("ohwx woman, cat", "ohwx_woman.safetensors"),                       # too little left
                            ("a cat. ohwx, on a mat", "ohwx.safetensors")):                      # not at the start
             self.assertEqual(self.strip(text, name), (text, {}), text)
+
+    def test_lora_tags_are_taken_off_with_their_separator(self):
+        for text, want in (("<lora:Hodge/H3rdBW.safetensors:0.93>, a woman in the rain", "a woman in the rain"),
+                           ("a castle, <lora:style:0.7>, at night", "a castle, at night"),
+                           ("a castle on a hill, <lora:style:0.7>", "a castle on a hill"),
+                           ("a castle <LORA:style:1> on a hill", "a castle on a hill"),
+                           ("<lora:a:1><lora:b:0.5> a cat. <lora:c:1>. on a mat", "a cat. on a mat"),
+                           ("<lora:a:1>\na cat on a mat", "a cat on a mat"),
+                           ("a cat on a mat, <lorax> is not closed <lora", "a cat on a mat, is not closed <lora"),
+                           ("a cat on a mat", "a cat on a mat")):
+            self.assertEqual(ch.strip_lora_tags(text), want, text)
+
+    def test_crawl_takes_lora_tags_off_before_triggers(self):
+        self.put("Out_00001_.png", graph("<lora:Hodge/H3rdBW.safetensors:0.93>, ohwx woman, a portrait in the rain",
+                                         1, loras=OHWX))
+        self.put("Out_00002_.png", graph("<lora:x:1>", 2))
+        h = ch.crawl(self.dir, log=lambda *_: None)
+        self.assertEqual([p["text"] for p in h["prompts"]], ["a portrait in the rain"])
 
     def test_crawl_keeps_the_trigger_with_the_lora_and_joins_the_clean_prompt(self):
         self.put("Out_00001_.png", graph("ohwx woman, a portrait in the rain", 1, loras=OHWX))

@@ -42,6 +42,8 @@ If you use Mondocraft, an optional second step adds a harvest file's prompts to 
   `Prompt / Negative prompt: … / Steps: …, Seed: …` text is split into its parts. Every prompt records the field it
   came from.
 
+From every prompt, whatever made it, `<lora:…>` tags are taken off (see [LoRA tags](#lora-tags)).
+
 Each crawl also counts every metadata field it met, by name only, so you can see where a folder's files keep their
 information, including fields it did not take a prompt from.
 
@@ -94,6 +96,13 @@ sit later in the prompt, stay.
 The crawl lists every trigger it took off, with the LoRA and the number of prompts, and the harvest file keeps the
 list under `lora_triggers`, so a name word taken off by mistake is easy to spot. `--keep-triggers` leaves prompts as
 they are.
+
+### LoRA tags
+
+`<lora:…>` tags written into a prompt (`<lora:Hodge/H3rdBW.safetensors:0.93>`) load a LoRA; they are not prompt text.
+The crawl takes every one off, wherever it sits in the prompt, with the comma, semicolon or full stop right after it:
+`a castle, <lora:style:0.7>, at night` is harvested as `a castle, at night`. This happens before trigger words are
+looked for, and `--keep-triggers` does not change it.
 
 ### The harvest file
 

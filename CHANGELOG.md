@@ -2,6 +2,13 @@
 
 All notable changes to mondo-harvest are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-11-11
+
+### Changed
+
+- `<lora:…>` tags (`<lora:Hodge/H3rdBW.safetensors:0.93>`) are taken off prompts wherever they sit, with the
+  separator after them, before trigger words are looked for. A prompt that was only LoRA tags is not kept.
+
 ## [1.2.0] - 2026-11-11
 
 ### Changed
@@ -48,6 +55,7 @@ First public release.
 - `workspaces`: list Mondocraft's workspaces.
 - `--version`.
 
+[1.3.0]: https://github.com/hodgemann/mondo-harvest/releases/tag/v1.3.0
 [1.2.0]: https://github.com/hodgemann/mondo-harvest/releases/tag/v1.2.0
 [1.1.1]: https://github.com/hodgemann/mondo-harvest/releases/tag/v1.1.1
 [1.1.0]: https://github.com/hodgemann/mondo-harvest/releases/tag/v1.1.0

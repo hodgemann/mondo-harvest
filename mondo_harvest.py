@@ -8,7 +8,8 @@ crawl reads every output's metadata, never its image or video data, and writes o
 the command line, its subfolders included, to harvests/ unless --out says otherwise. Source files are only read.
 ComfyUI outputs give the prompt that fed the sampler, any unused prompt text left in the workflow, the models, the
 LoRAs switched on, the negative prompt, sampler settings and each output's seed. Other outputs give the prompts found
-in their description, comment, caption and similar fields (PNG text, EXIF, XMP, IPTC, video tags). Every distinct
+in their description, comment, caption and similar fields (PNG text, EXIF, XMP, IPTC, video tags). <lora:…> tags
+are taken off every prompt, and LoRA trigger words off the start of ComfyUI prompts. Every distinct
 prompt is listed once (runs of white space count as one space), with its setups and, under each, the outputs it
 made. The harvest also counts every metadata field it met, to show where a folder's files keep their information.
 
@@ -35,7 +36,7 @@ import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 APP = Path(__file__).resolve().parent
 HARVESTS = APP / "harvests"
@@ -619,6 +620,18 @@ def strip_triggers(text: str, loras: list[dict]) -> tuple[str, dict]:
     return rest, found
 
 
+# A1111-style LoRA tags ("<lora:Hodge/H3rdBW.safetensors:0.93>") load a LoRA from inside the prompt; they are not
+# prompt text. A tag goes with the separator after it, as a trigger does.
+LORA_TAG = re.compile(r"<lora[^<>]*>[ \t]*(?:[,;]|\.(?=\s|$))?[ \t]*", re.I)
+
+
+def strip_lora_tags(text: str) -> str:
+    """The prompt without its <lora:…> tags: "a castle, <lora:style:0.7>, at night" -> "a castle, at night"."""
+    if not LORA_TAG.search(text):
+        return text
+    return LORA_TAG.sub("", text).strip(" \t\n,;")
+
+
 def _names(graph: dict, ids: list[str], keys: tuple) -> list[str]:
     out = []
     for nid in reversed(ids):
@@ -877,14 +890,18 @@ class Crawl:
                 run["more_seeds"] = info["seeds"][1:]
         used = set()
         for text in info["positives"]:
+            text = strip_lora_tags(text)
+            if not text:
+                continue
             text, triggers = (text, {}) if self.keep_triggers else strip_triggers(text, info["loras"])
             used.add(norm(text))
             self._use(kind, text, info["t2i"], {**setup, "loras": [
                 {**lora, "trigger": triggers[lora["name"]]} if lora["name"] in triggers else lora
                 for lora in setup["loras"]]} if triggers else setup, run, mtime)
         for text in info["others"]:
+            text = strip_lora_tags(text)
             text = text if self.keep_triggers else strip_triggers(text, info["loras"])[0]
-            if norm(text) not in used:
+            if text and norm(text) not in used:
                 self._record(kind, text, True, mtime)["unused_in"].append(run["file"])
         self.negatives.update(info["negatives"])
         return True
@@ -899,7 +916,8 @@ class Crawl:
                                            sampler=item.get("sampler"), cfg=item.get("cfg"), **size).items()
                      if v not in (None, [], "")}
             this_run = {**run, **({"seed": item["seed"]} if "seed" in item else {})}
-            self._use(kind, item["text"], None, setup, this_run, mtime)
+            if text := strip_lora_tags(item["text"]):
+                self._use(kind, text, None, setup, this_run, mtime)
             if item.get("negative"):
                 self.negatives.add(norm(item["negative"]))
         return bool(found)
